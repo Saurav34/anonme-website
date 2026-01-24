@@ -3,8 +3,6 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { MOODS, MoodKey } from "@/constants/moods";
 import { Loader2, ArrowRight } from "lucide-react";
-import { db } from "@/lib/firebase"; 
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { StoreLinks } from "@/components/StoreLinks";
 
 export const Hero = ({ 
@@ -17,21 +15,44 @@ export const Hero = ({
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [joined, setJoined] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
 
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email) return;
-    setLoading(true);
     
-    // Simulating delay for "Premium" feel if keys aren't set up yet
+    setLoading(true);
+    setErrorMsg("");
+
     try {
-      // await addDoc(collection(db, "waitlist"), { email, createdAt: serverTimestamp() }); 
-      // ^ Uncomment above line when real keys are in lib/firebase.ts
-      await new Promise(r => setTimeout(r, 1500)); 
-      setJoined(true);
-      setEmail("");
+      // 1. Get Backend URL from Environment Variable
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
+
+      if (!backendUrl) {
+        throw new Error("Backend URL is not configured.");
+      }
+
+      // 2. Send Request to Python Backend
+      const response = await fetch(`${backendUrl}/api/waitlist`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email: email }),
+      });
+
+      // 3. Handle Response
+      if (response.ok) {
+        setJoined(true);
+        setEmail("");
+      } else {
+        // Try to get error message from backend, or default to generic
+        const data = await response.json().catch(() => ({}));
+        setErrorMsg(data.detail || "Something went wrong. Please try again.");
+      }
     } catch (error) {
-      console.error("Error joining waitlist:", error);
+      console.error("Join Error:", error);
+      setErrorMsg("Could not connect to the server.");
     } finally {
       setLoading(false);
     }
@@ -54,7 +75,7 @@ export const Hero = ({
         style={{ backgroundColor: activeColor }}
       />
 
-      {/* 2. Kinetic Headline (Staggered Reveal) */}
+      {/* 2. Kinetic Headline */}
       <h1 className="max-w-5xl text-5xl md:text-8xl font-bold tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white to-white/40">
         <span className="block mb-4 text-2xl md:text-4xl font-normal text-white/50 tracking-wide">
           Social media is a performance.
@@ -96,20 +117,21 @@ export const Hero = ({
             You are on the list. We will signal you soon.
           </motion.div>
         ) : (
-          <form onSubmit={handleJoin} className="relative group">
+          <form onSubmit={handleJoin} className="relative group flex flex-col items-center">
             {/* The glow effect behind the input */}
             <div 
               className="absolute -inset-1 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-1000" 
               style={{ background: `linear-gradient(to right, ${activeColor}, transparent)` }}
             />
             
-            <div className="relative flex items-center bg-black/80 backdrop-blur-xl border border-white/10 rounded-full p-2 pl-6 focus-within:border-white/30 transition-colors">
+            <div className="relative w-full flex items-center bg-black/80 backdrop-blur-xl border border-white/10 rounded-full p-2 pl-6 focus-within:border-white/30 transition-colors">
               <input 
                 type="email" 
                 placeholder="enter your email..." 
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="flex-1 bg-transparent border-none outline-none text-white placeholder:text-neutral-500 h-10"
+                required
               />
               <button 
                 disabled={loading}
@@ -118,11 +140,22 @@ export const Hero = ({
                 {loading ? <Loader2 className="animate-spin w-4 h-4" /> : <ArrowRight className="w-4 h-4" />}
               </button>
             </div>
+            
+            {/* Error Message (Only shows if something goes wrong) */}
+            {errorMsg && (
+                <motion.p 
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="text-red-400 text-sm mt-3 absolute -bottom-8"
+                >
+                    {errorMsg}
+                </motion.p>
+            )}
           </form>
         )}
       </motion.div>
 
-      {/* 4. ADD THIS: Store Links */}
+      {/* 4. Store Links */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
